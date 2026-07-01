@@ -46,11 +46,27 @@ class NodeCGrasp(Node):
             d = json.loads(msg.data)
             op = d.get("op", "grasp")
             wx, wy = float(d["x"]), float(d["y"])
+
+            # 전자부품 물류창고 시나리오 반영
+            item = d.get("item", "electronic_parts_box")
+            fragile = bool(d.get("fragile", True))
+
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            self._status(f"⚠️ grasp_request 파싱 실패: {e}"); self._result(False); return
+            self._status(f"⚠️ grasp_request 파싱 실패: {e}")
+            self._result(False)
+            return
+
+        # 작업 가능 범위 제한
+        if abs(wx) > 5.0 or abs(wy) > 5.0:
+            self._status(
+                f"⚠️ 작업 범위 초과: ({wx:.2f}, {wy:.2f}) — Node C 처리 불가"
+            )
+            self._result(False)
+            return
 
         tx = float(self.get_parameter("grasp_x").value)
         ty = float(self.get_parameter("grasp_y").value)
+
         # ★ 특이점 회피: y-offset 강제
         if abs(ty) < Y_OFFSET_MIN:
             self._status(f"⚠️ y={ty:.2f} < {Y_OFFSET_MIN} → 클램프")
@@ -58,8 +74,23 @@ class NodeCGrasp(Node):
 
         q = self._solve_ik(tx, ty)
         if q is None:
-            self._status("⚠️ IK 수렴 실패"); self._result(False); return
-        self._status(f"{op} IK 해 q={[round(float(v), 3) for v in q]} (target=({tx:.2f},{ty:.2f}))")
+            self._status("⚠️ IK 수렴 실패")
+            self._result(False)
+            return
+
+        if fragile:
+            self._status(
+                f"{op} 대상={item}, fragile=True → 충격 최소화 저속 파지 모드"
+            )
+        else:
+            self._status(
+                f"{op} 대상={item}, fragile=False → 일반 파지 모드"
+            )
+
+        self._status(
+            f"{op} IK 해 q={[round(float(v), 3) for v in q]} "
+            f"(target=({tx:.2f},{ty:.2f}))"
+        )
 
         ok = self._teleport(op, wx, wy)
         self._result(ok)
