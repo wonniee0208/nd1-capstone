@@ -35,8 +35,8 @@ def generate_launch_description():
     use_loc = LaunchConfiguration("localization")
     use_nav2 = LaunchConfiguration("nav2")
     map_yaml = LaunchConfiguration("map")
+    use_sim_time = LaunchConfiguration("use_sim_time")
 
-    params = [{"sim_mode": sim}]
     tb4_nav = FindPackageShare("turtlebot4_navigation")
 
     # ── 인자 선언 ────────────────────────────────────────────────
@@ -51,6 +51,8 @@ def generate_launch_description():
                               description="true=Nav2 기동(navigate_to_pose 액션 서버)"),
         DeclareLaunchArgument("map", default_value="",
                               description="localization:=true 일 때 사용할 맵 yaml 경로"),
+        DeclareLaunchArgument("use_sim_time", default_value="true",
+                              description="Gazebo /clock과 동기화. 실물 로봇 연동 시에만 false로 바꿀 것"),
         DeclareLaunchArgument("world_name", default_value="warehouse",
                               description="Node C 텔레포트 대상 Ignition 월드 이름"),
         DeclareLaunchArgument("box_model", default_value="box1",
@@ -62,29 +64,36 @@ def generate_launch_description():
     ]
 
     # ── map→odom 공급원 (둘 중 택1) + Nav2 (조건부 포함) ──────────
+    # ⚠️ use_sim_time을 안 넘기면 Gazebo(/clock, 시뮬시간)와 각 서버(기본 wall-clock)의
+    #    타임스탬프가 어긋나 SLAM/Nav2가 TF를 못 받아 조용히 멈춘다(에러 없이 무응답).
     includes = [
         # SLAM: 사전 맵 없이 map→odom 발행 (시뮬 시연에 가장 간단)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [tb4_nav, "launch", "slam.launch.py"])),
             condition=IfCondition(use_slam),
+            launch_arguments={"use_sim_time": use_sim_time}.items(),
         ),
         # Localization: 사전 맵 + AMCL (RViz 2D Pose Estimate로 초기화 필요)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [tb4_nav, "launch", "localization.launch.py"])),
             condition=IfCondition(use_loc),
-            launch_arguments={"map": map_yaml}.items(),
+            launch_arguments={"map": map_yaml, "use_sim_time": use_sim_time}.items(),
         ),
         # Nav2: 경로계획/제어/코스트맵 (navigate_to_pose 액션 서버)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
                 [tb4_nav, "launch", "nav2.launch.py"])),
             condition=IfCondition(use_nav2),
+            launch_arguments={"use_sim_time": use_sim_time}.items(),
         ),
     ]
 
     # ── 캡스톤 4노드 (항상 기동) ─────────────────────────────────
+    # sim_mode:=false여도 Gazebo(sim)로 도는 한 use_sim_time은 항상 시뮬시간을 따라야
+    # TF/costmap과 타임스탬프가 맞는다. params에 함께 실어 node_b_nav 등에도 넣어준다.
+    params = [{"sim_mode": sim, "use_sim_time": use_sim_time}]
     nodes = [
         Node(package="nd1_capstone", executable="node_a_llm", name="node_a_llm",
              output="screen"),
@@ -93,6 +102,7 @@ def generate_launch_description():
         Node(package="nd1_capstone", executable="node_c_grasp", name="node_c_grasp",
              output="screen", parameters=[{
                  "sim_mode": sim,
+                 "use_sim_time": use_sim_time,
                  "world_name": LaunchConfiguration("world_name"),
                  "box_model": LaunchConfiguration("box_model"),
                  "box_sdf_path": LaunchConfiguration("box_sdf_path"),
@@ -100,6 +110,7 @@ def generate_launch_description():
         Node(package="nd1_capstone", executable="coordinator_fsm", name="coordinator_fsm",
              output="screen", parameters=[{
                  "sim_mode": sim,
+                 "use_sim_time": use_sim_time,
                  "auto_redock": LaunchConfiguration("auto_redock"),
              }]),
     ]
