@@ -25,7 +25,7 @@ VALID_TARGETS: Dict[str, Tuple[float, float, float]] = {
     "Shelf_2": (2.5, -1.0, 0.0),
     "Shelf_3": (0.5, 2.0, 0.0),
     "Worker": (0.0, 0.0, 0.0),
-    "Workbench": (2.5, -1.0, 0.0),
+    "Workbench": (1.0, 0.0, 0.0),
 }
 
 TARGET_ALIASES = {
